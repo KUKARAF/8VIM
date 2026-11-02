@@ -60,7 +60,6 @@ class KeyboardControllerSpec : FunSpec({
     lateinit var keyboardCircle: Keyboard.Circle
     lateinit var isDynamicCircleOverlayEnabled: PreferenceData<Boolean>
     lateinit var showTrail: PreferenceData<Boolean>
-    lateinit var speechEnabled: PreferenceData<Boolean>
     val colorScheme = lightColorScheme()
 
     beforeSpec {
@@ -101,9 +100,6 @@ class KeyboardControllerSpec : FunSpec({
 
         every { appPreferenceModel() } returns CachedPreferenceModel(
             mockk<AppPrefs> {
-                every { speech } returns mockk {
-                    every { enabled } answers { speechEnabled }
-                }
                 every { keyboard } returns mockk {
                     every { trail } returns mockk {
                         every { isVisible } answers { showTrail }
@@ -134,7 +130,6 @@ class KeyboardControllerSpec : FunSpec({
         }
 
         isDynamicCircleOverlayEnabled = mockk<PreferenceData<Boolean>>(relaxed = true)
-        speechEnabled = mockk<PreferenceData<Boolean>> { every { get() } returns true }
 
         showTrail = mockk<PreferenceData<Boolean>> {
             every { get() } returns false
@@ -315,82 +310,6 @@ class KeyboardControllerSpec : FunSpec({
                     eventDispatcher
                         .sendDownUp(action, m.last() == FingerPosition.LONG_PRESS)
                 }
-            }
-        }
-
-        context("centre long press speech") {
-            val speak = CustomKeycode.SPEAK_TEXT.toKeyboardAction()
-            val stop = CustomKeycode.SPEAK_STOP.toKeyboardAction()
-            val centreUp = listOf(FingerPosition.INSIDE_CIRCLE, FingerPosition.NO_TOUCH)
-            val space = " ".toKeyboardAction()
-
-            fun stubCentre() {
-                every {
-                    xpadKeyboard.action(
-                        listOf(FingerPosition.INSIDE_CIRCLE, FingerPosition.LONG_PRESS),
-                        any()
-                    )
-                } returns speak.some()
-                every {
-                    xpadKeyboard.action(
-                        listOf(FingerPosition.INSIDE_CIRCLE, FingerPosition.LONG_PRESS_END),
-                        any()
-                    )
-                } returns stop.some()
-                every { xpadKeyboard.action(centreUp, any()) } returns space.some()
-                every { event.y } returns FingerPosition.INSIDE_CIRCLE.ordinal.toFloat()
-            }
-
-            test("holding centre speaks and does not type on release") {
-                stubCentre()
-                every { event.actionMasked } answers { MotionEvent.ACTION_DOWN } andThenAnswer {
-                    MotionEvent.ACTION_UP
-                }
-                val controller = KeyboardController(context).also { it.keyboard = xpadKeyboard }
-                controller.onTouchEventInternal(event)
-                delay(700)
-                controller.onTouchEventInternal(event)
-                verify(atLeast = 1) { eventDispatcher.sendDownUp(speak, true) }
-                verify(exactly = 1) { eventDispatcher.sendDownUp(stop, false) }
-                verify(exactly = 0) { eventDispatcher.sendDownUp(space, false) }
-            }
-
-            test("short tap on centre still types") {
-                stubCentre()
-                every { event.actionMasked } answers { MotionEvent.ACTION_DOWN } andThenAnswer {
-                    MotionEvent.ACTION_UP
-                }
-                val controller = KeyboardController(context).also { it.keyboard = xpadKeyboard }
-                controller.onTouchEventInternal(event)
-                controller.onTouchEventInternal(event)
-                verify(exactly = 0) { eventDispatcher.sendDownUp(speak, true) }
-                verify(exactly = 1) { eventDispatcher.sendDownUp(space, false) }
-            }
-
-            test("speech disabled keeps long press typing on release") {
-                stubCentre()
-                every { speechEnabled.get() } returns false
-                every { event.actionMasked } answers { MotionEvent.ACTION_DOWN } andThenAnswer {
-                    MotionEvent.ACTION_UP
-                }
-                val controller = KeyboardController(context).also { it.keyboard = xpadKeyboard }
-                controller.onTouchEventInternal(event)
-                delay(700)
-                controller.onTouchEventInternal(event)
-                verify(exactly = 0) { eventDispatcher.sendDownUp(speak, true) }
-                verify(exactly = 1) { eventDispatcher.sendDownUp(space, false) }
-            }
-
-            test("cancel while speaking sends stop") {
-                stubCentre()
-                every { event.actionMasked } answers { MotionEvent.ACTION_DOWN } andThenAnswer {
-                    MotionEvent.ACTION_CANCEL
-                }
-                val controller = KeyboardController(context).also { it.keyboard = xpadKeyboard }
-                controller.onTouchEventInternal(event)
-                delay(700)
-                controller.onTouchEventInternal(event)
-                verify(exactly = 1) { eventDispatcher.sendDownUp(stop, false) }
             }
         }
 

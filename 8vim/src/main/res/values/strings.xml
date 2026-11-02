@@ -160,11 +160,6 @@
     <string name="settings__keyboard__word_prediction__enabled__summary__on">Word suggestions will appear above the keyboard</string>
     <string name="settings__keyboard__word_prediction__enabled__summary__off">No word suggestions shown</string>
 
-    <string name="settings__keyboard__speech__group__title">Text to speech</string>
-    <string name="settings__keyboard__speech__enabled__title">Read text aloud on centre hold</string>
-    <string name="settings__keyboard__speech__enabled__summary__on">Hold the centre button to hear the selected text, or the last sentence before the cursor</string>
-    <string name="settings__keyboard__speech__enabled__summary__off">Holding the centre button does nothing</string>
-
     <string name="settings__keyboard__haptic__sound__group__title">Haptic and sound</string>
     <string name="settings__keyboard__haptic__feedback__enabled__title">Enable input haptic feedback</string>
     <string name="settings__keyboard__haptic__feedback__enabled__summary__on">Haptic feedback is enabled</string>

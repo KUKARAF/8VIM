@@ -31,7 +31,6 @@ class AppPrefs : PreferenceModel(9) {
     val inputFeedback = InputFeedback()
     val wordPrediction = WordPrediction()
     val textReplacement = TextReplacement()
-    val speech = Speech()
     val internal = Internal()
 
     inner class Clipboard {
@@ -248,13 +247,6 @@ class AppPrefs : PreferenceModel(9) {
         val enabled = boolean(
             key = "prefs_word_prediction_enabled",
             default = false
-        )
-    }
-
-    inner class Speech {
-        val enabled = boolean(
-            key = "prefs_speech_enabled",
-            default = true
         )
     }
 

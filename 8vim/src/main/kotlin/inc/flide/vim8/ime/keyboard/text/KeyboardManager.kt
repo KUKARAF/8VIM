@@ -14,7 +14,6 @@ import inc.flide.vim8.ime.layout.models.CustomKeycode
 import inc.flide.vim8.ime.layout.models.KeyboardAction
 import inc.flide.vim8.ime.layout.models.KeyboardActionType
 import inc.flide.vim8.ime.text.TextReplacementManager
-import inc.flide.vim8.speechManager
 import inc.flide.vim8.suggestionsManager
 import inc.flide.vim8.textReplacementManager
 
@@ -23,8 +22,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     private val editorInstance by context.editorInstance()
     private val suggestionsManager by context.suggestionsManager()
     private val textReplacementManager by context.textReplacementManager()
-    private val speechManager by context.speechManager()
-    private var isSpeakHeld = false
     val activeState = ObservableKeyboardState.new()
 
     private val repeatableKeyCodes = intArrayOf(
@@ -130,23 +127,8 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             CustomKeycode.SELECT_SUGGESTION_LEFT -> suggestionsManager.commitSuggestion(0)
             CustomKeycode.SELECT_SUGGESTION_MIDDLE -> suggestionsManager.commitSuggestion(1)
             CustomKeycode.SELECT_SUGGESTION_RIGHT -> suggestionsManager.commitSuggestion(2)
-            CustomKeycode.SPEAK_TEXT -> handleSpeakText()
-            CustomKeycode.SPEAK_STOP -> handleSpeakStop()
             else -> {}
         }
-    }
-
-    private fun handleSpeakText() {
-        // Long press repeats this key every 50 ms: act on the first event of a hold only.
-        if (isSpeakHeld) return
-        isSpeakHeld = true
-        if (!prefs.speech.enabled.get()) return
-        editorInstance.textToSpeak()?.let { speechManager.speak(it) }
-    }
-
-    private fun handleSpeakStop() {
-        isSpeakHeld = false
-        speechManager.stop()
     }
 
     private fun handleText(keyboardAction: KeyboardAction) {
@@ -260,7 +242,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     }
 
     override fun onInputKeyUp(keyboardAction: KeyboardAction, repeat: Boolean) {
-        if (isSpeakHeld && keyboardAction.keyEventCode == CustomKeycode.SPEAK_TEXT.keyCode) return
         if (keyboardAction.keyboardActionType == KeyboardActionType.INPUT_KEY &&
             !repeatableKeyCodesSet.contains(keyboardAction.keyEventCode)
         ) {
