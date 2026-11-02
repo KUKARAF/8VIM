@@ -58,6 +58,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    ndkVersion = "27.3.13750724"
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
     packaging {
         resources {
             excludes += setOf(
@@ -73,6 +82,15 @@ android {
     defaultConfig {
         applicationId = "inc.flide.vi8"
         minSdk = 24
+
+        ndk {
+            abiFilters += setOf("arm64-v8a")
+        }
+        externalNativeBuild {
+            cmake {
+                arguments += listOf("-DCMAKE_BUILD_TYPE=Release", "-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON")
+            }
+        }
         targetSdk = 35
         resValue("string", "app_name", "8Vim")
         if (prNumber != null) {

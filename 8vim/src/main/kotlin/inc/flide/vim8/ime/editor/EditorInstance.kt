@@ -19,11 +19,14 @@ class EditorInstance(context: Context) {
     private val breakIteratorGroup = BreakIteratorGroup(context)
     private fun currentInputConnection() = Vim8ImeService.currentInputConnection()
 
+    private var isPasswordField = false
+
     var imeOptions: ImeOptions = ImeOptions.wrap(0)
         private set
 
     fun handleStartInputView(editorInfo: EditorInfo) {
         imeOptions = ImeOptions.wrap(editorInfo.imeOptions)
+        isPasswordField = editorInfo.isPasswordInputType()
 
         activeState.imeUiMode = when (editorInfo.inputType and InputType.TYPE_MASK_CLASS) {
             InputType.TYPE_CLASS_NUMBER,
@@ -50,6 +53,21 @@ class EditorInstance(context: Context) {
                 ImeUiMode.TEXT
             }
         }
+    }
+
+    /** Dictation is never offered in password fields. */
+    fun canDictate(): Boolean =
+        !isPasswordField && activeState.keyVariation != KeyVariation.PASSWORD
+
+    /** Shows [text] as in-progress (underlined) text that the next call replaces. */
+    fun setComposingText(text: String): Boolean {
+        val ic = currentInputConnection() ?: return false
+        return ic.setComposingText(text, 1)
+    }
+
+    fun finishComposingText(): Boolean {
+        val ic = currentInputConnection() ?: return false
+        return ic.finishComposingText()
     }
 
     fun commitText(text: String): Boolean {
@@ -147,4 +165,17 @@ class EditorInstance(context: Context) {
                 flags
             )
         )
+}
+
+private fun EditorInfo.isPasswordInputType(): Boolean {
+    val variation = inputType and InputType.TYPE_MASK_VARIATION
+    return when (inputType and InputType.TYPE_MASK_CLASS) {
+        InputType.TYPE_CLASS_TEXT ->
+            variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+
+        InputType.TYPE_CLASS_NUMBER -> variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        else -> false
+    }
 }

@@ -17,6 +17,16 @@ layers:
       lower_case: " "
     - type: input_key
       movement_sequence:
+        - inside_circle
+        - long_press
+      key_code: dictate_start
+    - type: input_key
+      movement_sequence:
+        - inside_circle
+        - long_press_end
+      key_code: dictate_stop
+    - type: input_key
+      movement_sequence:
         - bottom
         - no_touch
       key_code: keycode_enter

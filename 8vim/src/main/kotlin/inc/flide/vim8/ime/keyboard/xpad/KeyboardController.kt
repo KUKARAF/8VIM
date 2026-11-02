@@ -27,6 +27,7 @@ import inc.flide.vim8.ime.layout.models.MovementSequenceType
 import inc.flide.vim8.ime.theme.ThemeManager
 import inc.flide.vim8.ime.theme.blendARGB
 import inc.flide.vim8.keyboardManager
+import inc.flide.vim8.speechManager
 import inc.flide.vim8.themeManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -109,6 +110,7 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
     private val prefs by appPreferenceModel()
     private val keyboardManager by context.keyboardManager()
     private val themeManager by context.themeManager()
+    private val speechManager by context.speechManager()
 
     private val drawStyle = Stroke(context.resources.displayMetrics.density * 2)
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -116,6 +118,9 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
     private var currentMovementSequenceType = MovementSequenceType.NO_MOVEMENT
     private var currentFingerPosition: FingerPosition = FingerPosition.NO_TOUCH
     private var currentKey: Key? = null
+
+    // Set when a long press was consumed by text-to-speech so releasing must not also type a key.
+    private var longPressConsumed = false
     private val movementSequence: MutableList<FingerPosition> = arrayListOf()
     private val trailColor: Color
         get() = (
@@ -161,6 +166,8 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
 
         drawScope.drawPath(keyboard.path, color, style = drawStyle)
 
+        if (speechManager.isListening) drawLoudnessRing(drawScope, color)
+
         if (hasVirtualCentre) {
             drawScope.drawCircle(
                 color.blendARGB(backgroundColor, 0.65f).copy(alpha = 0.75f),
@@ -169,6 +176,17 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
                 style = Fill
             )
         }
+    }
+
+    /** A ring around the circle that grows and thickens with the microphone loudness. */
+    private fun drawLoudnessRing(drawScope: DrawScope, color: Color) {
+        val level = speechManager.level
+        drawScope.drawCircle(
+            color.copy(alpha = RING_MIN_ALPHA + RING_ALPHA_RANGE * level),
+            keyboard.circle.radius * (1f + RING_GROWTH * level) + RING_GAP,
+            keyboard.circle.centre,
+            style = Stroke(width = RING_MIN_WIDTH + RING_WIDTH_RANGE * level)
+        )
     }
 
     fun drawTrail(drawScope: DrawScope, trailPoints: List<GlideGesture.Point>) {
@@ -194,6 +212,7 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                longPressConsumed = false
                 keyboard.trailColor = trailColor
                 resetKey()
                 movementSequence.clear()
@@ -214,6 +233,7 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
                 val isFingerPositionChanged = lastKnownFingerPosition !== currentFingerPosition
                 if (isFingerPositionChanged) {
                     interruptLongPress()
+                    longPressConsumed = false
                     movementSequence.add(currentFingerPosition)
                     keyboard.findLayer(movementSequence)
 
@@ -261,7 +281,8 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
                 keyboard.circle.reset()
                 currentFingerPosition = FingerPosition.NO_TOUCH
                 movementSequence.add(currentFingerPosition)
-                processKeyPress(movementSequence)
+                if (!longPressConsumed) processKeyPress(movementSequence)
+                longPressConsumed = false
 
                 movementSequence.clear()
                 currentMovementSequenceType = MovementSequenceType.NO_MOVEMENT
@@ -271,6 +292,10 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
             MotionEvent.ACTION_CANCEL -> {
                 job?.cancel()
                 job = null
+                if (longPressConsumed) {
+                    longPressConsumed = false
+                    inputEventDispatcher.sendDownUp(CustomKeycode.DICTATE_STOP.toKeyboardAction())
+                }
                 resetKey()
                 isReducesCircleSize = false
                 keyboard.circle.reset()
@@ -337,7 +362,14 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
 
     private fun processLongPressStart(movementSequence: MovementSequence) {
         processMovementSequence(movementSequence)
+            .filter {
+                it.keyEventCode != CustomKeycode.DICTATE_START.keyCode ||
+                    prefs.speech.enabled.get()
+            }
             .onSome {
+                if (it.keyEventCode == CustomKeycode.DICTATE_START.keyCode) {
+                    longPressConsumed = true
+                }
                 inputEventDispatcher.sendDownUp(it, true)
             }
     }
@@ -400,3 +432,10 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
         hasTrail = false
     }
 }
+
+private const val RING_MIN_ALPHA = 0.5f
+private const val RING_ALPHA_RANGE = 0.5f
+private const val RING_GROWTH = 0.8f
+private const val RING_GAP = 16f
+private const val RING_MIN_WIDTH = 12f
+private const val RING_WIDTH_RANGE = 90f

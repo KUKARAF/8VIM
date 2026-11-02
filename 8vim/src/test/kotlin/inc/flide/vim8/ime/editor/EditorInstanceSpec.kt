@@ -14,6 +14,7 @@ import inc.flide.vim8.ime.nlp.BreakIteratorGroup
 import inc.flide.vim8.keyboardManager
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.datatest.withData
+import io.kotest.matchers.shouldBe
 import io.kotest.property.Arb
 import io.kotest.property.Exhaustive
 import io.kotest.property.arbitrary.string
@@ -110,6 +111,34 @@ class EditorInstanceSpec : FunSpec({
                 verify { keyboardState setProperty "imeUiMode" value mode }
                 verify { keyboardState setProperty "keyVariation" value keyVariation }
             }
+        }
+    }
+
+    @Suppress("ktlint:standard:max-line-length")
+    context("canDictate") {
+        beforeTest {
+            every { keyboardState.keyVariation } returns KeyVariation.NORMAL
+        }
+
+        test("allowed in normal fields") {
+            EditorInstance(context).canDictate() shouldBe true
+        }
+
+        test("password variation is never dictated") {
+            every { keyboardState.keyVariation } returns KeyVariation.PASSWORD
+            EditorInstance(context).canDictate() shouldBe false
+        }
+
+        withData(
+            nameFn = { it.second },
+            (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD) to "text password",
+            (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD) to "visible password",
+            (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD) to "web password",
+            (InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD) to "number password"
+        ) { (inputType, _) ->
+            val editorInstance = EditorInstance(context)
+            editorInstance.handleStartInputView(EditorInfo().also { it.inputType = inputType })
+            editorInstance.canDictate() shouldBe false
         }
     }
 

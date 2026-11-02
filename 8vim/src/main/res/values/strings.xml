@@ -160,6 +160,21 @@
     <string name="settings__keyboard__word_prediction__enabled__summary__on">Word suggestions will appear above the keyboard</string>
     <string name="settings__keyboard__word_prediction__enabled__summary__off">No word suggestions shown</string>
 
+    <string name="settings__keyboard__speech__group__title">Speech to text</string>
+    <string name="settings__keyboard__speech__enabled__title">Dictate on centre hold</string>
+    <string name="settings__keyboard__speech__enabled__summary__on">Hold the centre button and speak; release to finish</string>
+    <string name="settings__keyboard__speech__enabled__summary__off">Holding the centre button does nothing</string>
+    <string name="speech__model_invalid">The speech model could not be loaded; try re-downloading it</string>
+    <string name="speech__model_missing">Download a speech model in Keyboard settings first</string>
+    <string name="settings__keyboard__speech__model__group__title">Speech models</string>
+    <string name="settings__keyboard__speech__model__summary">%1$d MB, runs offline</string>
+    <string name="settings__keyboard__speech__model__downloading">Downloading… %1$d%%</string>
+    <string name="settings__keyboard__speech__model__failed">Download failed, tap to retry</string>
+    <string name="settings__keyboard__speech__model__selected">Selected</string>
+    <string name="settings__keyboard__speech__model__download">Download</string>
+    <string name="settings__keyboard__speech__model__delete">Delete</string>
+    <string name="speech__permission_denied">Microphone permission is required for dictation</string>
+
     <string name="settings__keyboard__haptic__sound__group__title">Haptic and sound</string>
     <string name="settings__keyboard__haptic__feedback__enabled__title">Enable input haptic feedback</string>
     <string name="settings__keyboard__haptic__feedback__enabled__summary__on">Haptic feedback is enabled</string>

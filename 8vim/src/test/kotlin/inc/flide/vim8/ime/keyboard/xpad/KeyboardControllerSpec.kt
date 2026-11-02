@@ -32,6 +32,7 @@ import inc.flide.vim8.ime.layout.models.LayerLevel.Companion.VisibleLayers
 import inc.flide.vim8.ime.theme.ThemeManager
 import inc.flide.vim8.ime.theme.blendARGB
 import inc.flide.vim8.keyboardManager
+import inc.flide.vim8.speechManager
 import inc.flide.vim8.themeManager
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.datatest.withData
@@ -60,6 +61,7 @@ class KeyboardControllerSpec : FunSpec({
     lateinit var keyboardCircle: Keyboard.Circle
     lateinit var isDynamicCircleOverlayEnabled: PreferenceData<Boolean>
     lateinit var showTrail: PreferenceData<Boolean>
+    lateinit var speechEnabled: PreferenceData<Boolean>
     val colorScheme = lightColorScheme()
 
     beforeSpec {
@@ -67,6 +69,7 @@ class KeyboardControllerSpec : FunSpec({
         mockkStatic(::appPreferenceModel)
         mockkStatic(Context::keyboardManager)
         mockkStatic(Context::themeManager)
+        mockkStatic(Context::speechManager)
         mockkObject(Vim8ImeService)
 
         context = mockk<Context> {
@@ -83,6 +86,7 @@ class KeyboardControllerSpec : FunSpec({
                     }
                 }
             }
+            every { speechManager() } returns lazy { mockk(relaxed = true) }
             every { themeManager() } returns lazy {
                 mockk {
                     every { currentTheme } returns mockk {
@@ -100,6 +104,9 @@ class KeyboardControllerSpec : FunSpec({
 
         every { appPreferenceModel() } returns CachedPreferenceModel(
             mockk<AppPrefs> {
+                every { speech } returns mockk {
+                    every { enabled } answers { speechEnabled }
+                }
                 every { keyboard } returns mockk {
                     every { trail } returns mockk {
                         every { isVisible } answers { showTrail }
@@ -130,6 +137,7 @@ class KeyboardControllerSpec : FunSpec({
         }
 
         isDynamicCircleOverlayEnabled = mockk<PreferenceData<Boolean>>(relaxed = true)
+        speechEnabled = mockk<PreferenceData<Boolean>> { every { get() } returns true }
 
         showTrail = mockk<PreferenceData<Boolean>> {
             every { get() } returns false
@@ -310,6 +318,82 @@ class KeyboardControllerSpec : FunSpec({
                     eventDispatcher
                         .sendDownUp(action, m.last() == FingerPosition.LONG_PRESS)
                 }
+            }
+        }
+
+        context("centre long press dictation") {
+            val speak = CustomKeycode.DICTATE_START.toKeyboardAction()
+            val stop = CustomKeycode.DICTATE_STOP.toKeyboardAction()
+            val centreUp = listOf(FingerPosition.INSIDE_CIRCLE, FingerPosition.NO_TOUCH)
+            val space = " ".toKeyboardAction()
+
+            fun stubCentre() {
+                every {
+                    xpadKeyboard.action(
+                        listOf(FingerPosition.INSIDE_CIRCLE, FingerPosition.LONG_PRESS),
+                        any()
+                    )
+                } returns speak.some()
+                every {
+                    xpadKeyboard.action(
+                        listOf(FingerPosition.INSIDE_CIRCLE, FingerPosition.LONG_PRESS_END),
+                        any()
+                    )
+                } returns stop.some()
+                every { xpadKeyboard.action(centreUp, any()) } returns space.some()
+                every { event.y } returns FingerPosition.INSIDE_CIRCLE.ordinal.toFloat()
+            }
+
+            test("holding centre dictates and does not type on release") {
+                stubCentre()
+                every { event.actionMasked } answers { MotionEvent.ACTION_DOWN } andThenAnswer {
+                    MotionEvent.ACTION_UP
+                }
+                val controller = KeyboardController(context).also { it.keyboard = xpadKeyboard }
+                controller.onTouchEventInternal(event)
+                delay(700)
+                controller.onTouchEventInternal(event)
+                verify(atLeast = 1) { eventDispatcher.sendDownUp(speak, true) }
+                verify(exactly = 1) { eventDispatcher.sendDownUp(stop, false) }
+                verify(exactly = 0) { eventDispatcher.sendDownUp(space, false) }
+            }
+
+            test("short tap on centre still types") {
+                stubCentre()
+                every { event.actionMasked } answers { MotionEvent.ACTION_DOWN } andThenAnswer {
+                    MotionEvent.ACTION_UP
+                }
+                val controller = KeyboardController(context).also { it.keyboard = xpadKeyboard }
+                controller.onTouchEventInternal(event)
+                controller.onTouchEventInternal(event)
+                verify(exactly = 0) { eventDispatcher.sendDownUp(speak, true) }
+                verify(exactly = 1) { eventDispatcher.sendDownUp(space, false) }
+            }
+
+            test("speech disabled keeps long press typing on release") {
+                stubCentre()
+                every { speechEnabled.get() } returns false
+                every { event.actionMasked } answers { MotionEvent.ACTION_DOWN } andThenAnswer {
+                    MotionEvent.ACTION_UP
+                }
+                val controller = KeyboardController(context).also { it.keyboard = xpadKeyboard }
+                controller.onTouchEventInternal(event)
+                delay(700)
+                controller.onTouchEventInternal(event)
+                verify(exactly = 0) { eventDispatcher.sendDownUp(speak, true) }
+                verify(exactly = 1) { eventDispatcher.sendDownUp(space, false) }
+            }
+
+            test("cancel while dictating sends stop") {
+                stubCentre()
+                every { event.actionMasked } answers { MotionEvent.ACTION_DOWN } andThenAnswer {
+                    MotionEvent.ACTION_CANCEL
+                }
+                val controller = KeyboardController(context).also { it.keyboard = xpadKeyboard }
+                controller.onTouchEventInternal(event)
+                delay(700)
+                controller.onTouchEventInternal(event)
+                verify(exactly = 1) { eventDispatcher.sendDownUp(stop, false) }
             }
         }
 

@@ -4,21 +4,32 @@ import android.content.Context
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import inc.flide.vim8.AppPrefs
 import inc.flide.vim8.R
 import inc.flide.vim8.datastore.model.PreferenceData
 import inc.flide.vim8.datastore.model.observeAsState
 import inc.flide.vim8.datastore.ui.Preference
 import inc.flide.vim8.datastore.ui.PreferenceGroup
+import inc.flide.vim8.datastore.ui.PreferenceUiScope
 import inc.flide.vim8.datastore.ui.RangeSliderPreference
 import inc.flide.vim8.datastore.ui.SliderPreference
 import inc.flide.vim8.datastore.ui.SwitchPreference
+import inc.flide.vim8.ime.speech.DownloadState
+import inc.flide.vim8.ime.speech.SpeechModels
 import inc.flide.vim8.lib.compose.Dialog
 import inc.flide.vim8.lib.compose.Screen
 import inc.flide.vim8.lib.compose.stringRes
 import inc.flide.vim8.lib.util.InputMethodUtils.listOtherKeyboard
+import inc.flide.vim8.speechManager
+import kotlinx.coroutines.launch
 
 @Composable
 fun KeyboardScreen() = Screen {
@@ -83,6 +94,19 @@ fun KeyboardScreen() = Screen {
                 )
             )
         }
+
+        PreferenceGroup(
+            title = stringRes(R.string.settings__keyboard__speech__group__title)
+        ) {
+            SwitchPreference(
+                pref = prefs.speech.enabled,
+                title = stringRes(R.string.settings__keyboard__speech__enabled__title),
+                summaryOn = stringRes(R.string.settings__keyboard__speech__enabled__summary__on),
+                summaryOff = stringRes(R.string.settings__keyboard__speech__enabled__summary__off)
+            )
+        }
+
+        SpeechModelsGroup()
 
         PreferenceGroup(
             title = stringRes(R.string.settings__keyboard__circle__auto_resize_group__title)
@@ -289,4 +313,68 @@ private fun selectedKeyboard(pref: PreferenceData<String>, context: Context): In
         pref.reset()
     }
     return index
+}
+
+@Composable
+private fun PreferenceUiScope<AppPrefs>.SpeechModelsGroup() {
+    val context = LocalContext.current
+    val manager = remember { context.applicationContext.speechManager().value }
+    val scope = rememberCoroutineScope()
+    val selectedId by prefs.speech.model.observeAsState()
+    val downloadState by manager.models.state.collectAsState()
+    val installedVersion by manager.models.version.collectAsState()
+
+    PreferenceGroup(
+        title = stringRes(R.string.settings__keyboard__speech__model__group__title)
+    ) {
+        SpeechModels.catalog.forEach { model ->
+            val installed = remember(installedVersion) { manager.models.isInstalled(model.id) }
+            val state = downloadState?.takeIf {
+                when (it) {
+                    is DownloadState.Downloading -> it.modelId == model.id
+                    is DownloadState.Failed -> it.modelId == model.id
+                }
+            }
+            val summary = when (state) {
+                is DownloadState.Downloading ->
+                    context.getString(
+                        R.string.settings__keyboard__speech__model__downloading,
+                        state.percent
+                    )
+                is DownloadState.Failed -> stringRes(
+                    R.string.settings__keyboard__speech__model__failed
+                )
+                null -> if (installed && selectedId == model.id) {
+                    stringRes(R.string.settings__keyboard__speech__model__selected)
+                } else {
+                    context.getString(
+                        R.string.settings__keyboard__speech__model__summary,
+                        model.sizeMb
+                    )
+                }
+            }
+            Preference(
+                title = model.label,
+                summary = summary,
+                trailing = {
+                    if (installed) {
+                        TextButton(onClick = { manager.models.delete(model.id) }) {
+                            Text(stringRes(R.string.settings__keyboard__speech__model__delete))
+                        }
+                    } else if (state !is DownloadState.Downloading) {
+                        TextButton(onClick = { scope.launch { manager.models.download(model) } }) {
+                            Text(stringRes(R.string.settings__keyboard__speech__model__download))
+                        }
+                    }
+                },
+                onClick = {
+                    if (installed) {
+                        prefs.speech.model.set(model.id)
+                    } else if (state !is DownloadState.Downloading) {
+                        scope.launch { manager.models.download(model) }
+                    }
+                }
+            )
+        }
+    }
 }

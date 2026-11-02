@@ -5,6 +5,7 @@ import android.view.KeyEvent
 import inc.flide.vim8.Vim8ImeService
 import inc.flide.vim8.appPreferenceModel
 import inc.flide.vim8.datastore.CachedPreferenceModel
+import inc.flide.vim8.datastore.model.PreferenceData
 import inc.flide.vim8.datastore.model.PreferenceObserver
 import inc.flide.vim8.editorInstance
 import inc.flide.vim8.ime.editor.EditorInstance
@@ -16,11 +17,14 @@ import inc.flide.vim8.ime.input.InputKeyEventReceiver
 import inc.flide.vim8.ime.input.InputShiftState
 import inc.flide.vim8.ime.layout.models.CustomKeycode
 import inc.flide.vim8.ime.nlp.SuggestionsManager
+import inc.flide.vim8.ime.speech.SpeechManager
 import inc.flide.vim8.ime.text.TextReplacementManager
+import inc.flide.vim8.speechManager
 import inc.flide.vim8.suggestionsManager
 import inc.flide.vim8.textReplacementManager
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.datatest.withData
+import io.kotest.matchers.shouldBe
 import io.mockk.Runs
 import io.mockk.clearConstructorMockk
 import io.mockk.clearStaticMockk
@@ -41,6 +45,8 @@ class KeyboardManagerSpec : FunSpec(
         lateinit var editor: EditorInstance
         lateinit var suggestionsManager: SuggestionsManager
         lateinit var textReplacementManager: TextReplacementManager
+        lateinit var speechManager: SpeechManager
+        lateinit var speechEnabled: PreferenceData<Boolean>
         lateinit var observerCtrl: PreferenceObserver<Boolean>
         lateinit var observerFn: PreferenceObserver<Boolean>
         val inputFeedbackController = mockk<InputFeedbackController>(relaxed = true)
@@ -112,6 +118,10 @@ class KeyboardManagerSpec : FunSpec(
                     )
                 }
 
+                CustomKeycode.DICTATE_START.keyCode -> verify {
+                    speechManager.start(any(), any())
+                }
+                CustomKeycode.DICTATE_STOP.keyCode -> verify { speechManager.stop() }
                 CustomKeycode.NO_OPERATION.keyCode -> {}
                 CustomKeycode.SELECTION_START.keyCode -> verifyOrder {
                     editor.sendDownEvent(KeyEvent.KEYCODE_SHIFT_LEFT, any())
@@ -141,6 +151,7 @@ class KeyboardManagerSpec : FunSpec(
             mockkStatic(Context::editorInstance)
             mockkStatic(Context::suggestionsManager)
             mockkStatic(Context::textReplacementManager)
+            mockkStatic(Context::speechManager)
             mockkStatic(::appPreferenceModel)
             mockkObject(ObservableKeyboardState)
             mockkObject(Vim8ImeService)
@@ -150,6 +161,7 @@ class KeyboardManagerSpec : FunSpec(
                 every { editorInstance() } answers { lazy { editor } }
                 every { suggestionsManager() } answers { lazy { suggestionsManager } }
                 every { textReplacementManager() } answers { lazy { textReplacementManager } }
+                every { speechManager() } answers { lazy { speechManager } }
             }
 
             every { ObservableKeyboardState.new() } answers { keyboardState }
@@ -170,6 +182,10 @@ class KeyboardManagerSpec : FunSpec(
                             }
                         }
                     }
+                    every { speech } returns mockk {
+                        every { enabled } answers { speechEnabled }
+                        every { model } returns mockk { every { get() } returns "english-39" }
+                    }
                     every { textReplacement } returns mockk {
                         every { enabled } returns mockk(relaxed = true) {
                             every { get() } returns false
@@ -189,6 +205,7 @@ class KeyboardManagerSpec : FunSpec(
 
         beforeTest {
             editor = mockk(relaxed = true) {
+                every { canDictate() } returns true
                 every { imeOptions } returns mockk(relaxed = true) {
                     every { action } returns ImeOptions.Action.DONE
                     every { flagNoEnterAction } returns true
@@ -201,6 +218,8 @@ class KeyboardManagerSpec : FunSpec(
             }
             suggestionsManager = mockk(relaxed = true)
             textReplacementManager = mockk(relaxed = true)
+            speechManager = mockk(relaxed = true)
+            speechEnabled = mockk(relaxed = true) { every { get() } returns true }
         }
 
         test("Observe ctrl and fn on switch") {
@@ -261,6 +280,47 @@ class KeyboardManagerSpec : FunSpec(
                     inputFeedbackController.keyPress(any(), any())
                 }
                 verifyKeyCode(it.keyEventCode)
+            }
+        }
+
+        context("speech") {
+            val speak = CustomKeycode.DICTATE_START.toKeyboardAction()
+            val stop = CustomKeycode.DICTATE_STOP.toKeyboardAction()
+
+            test("starts dictation once per hold despite repeats") {
+                every { editor.canDictate() } returns true
+                val manager = KeyboardManager(context)
+                repeat(5) { manager.onInputKeyUp(speak, true) }
+                verify(exactly = 1) { speechManager.start(any(), any()) }
+                verify(exactly = 1) { editor.canDictate() }
+            }
+
+            test("stop re-arms dictation") {
+                every { editor.canDictate() } returns true
+                val manager = KeyboardManager(context)
+                manager.onInputKeyUp(speak, true)
+                manager.onInputKeyUp(stop, false)
+                manager.onInputKeyUp(speak, true)
+                verify(exactly = 2) { speechManager.start(any(), any()) }
+                verify(exactly = 1) { speechManager.stop() }
+            }
+
+            test("dictation not allowed") {
+                every { editor.canDictate() } returns false
+                KeyboardManager(context).onInputKeyUp(speak, true)
+                verify(exactly = 0) { speechManager.start(any(), any()) }
+            }
+
+            test("disabled in settings") {
+                every { speechEnabled.get() } returns false
+                every { editor.canDictate() } returns true
+                KeyboardManager(context).onInputKeyUp(speak, true)
+                verify(exactly = 0) { editor.canDictate() }
+                verify(exactly = 0) { speechManager.start(any(), any()) }
+            }
+
+            test("dictate keycodes are not repeatable") {
+                (CustomKeycode.DICTATE_START.keyCode in repeatableKeyCodes) shouldBe false
             }
         }
 
