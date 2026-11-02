@@ -14,6 +14,7 @@ import inc.flide.vim8.ime.nlp.BreakIteratorGroup
 import inc.flide.vim8.keyboardManager
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.datatest.withData
+import io.kotest.matchers.shouldBe
 import io.kotest.property.Arb
 import io.kotest.property.Exhaustive
 import io.kotest.property.arbitrary.string
@@ -110,6 +111,49 @@ class EditorInstanceSpec : FunSpec({
                 verify { keyboardState setProperty "imeUiMode" value mode }
                 verify { keyboardState setProperty "keyVariation" value keyVariation }
             }
+        }
+    }
+
+    @Suppress("ktlint:standard:max-line-length")
+    context("textToSpeak") {
+        beforeTest {
+            every { keyboardState.keyVariation } returns KeyVariation.NORMAL
+        }
+
+        test("selected text wins") {
+            every { inputConnection.getSelectedText(0) } returns " picked words "
+            EditorInstance(context).textToSpeak() shouldBe "picked words"
+        }
+
+        test("falls back to last sentence before cursor") {
+            every { inputConnection.getSelectedText(0) } returns null
+            every { inputConnection.getTextBeforeCursor(any(), 0) } returns "First one. Second one"
+            EditorInstance(context).textToSpeak() shouldBe "Second one"
+        }
+
+        test("nothing to read") {
+            every { inputConnection.getSelectedText(0) } returns null
+            every { inputConnection.getTextBeforeCursor(any(), 0) } returns "  "
+            EditorInstance(context).textToSpeak() shouldBe null
+        }
+
+        test("password variation is never read") {
+            every { keyboardState.keyVariation } returns KeyVariation.PASSWORD
+            every { inputConnection.getSelectedText(0) } returns "secret"
+            EditorInstance(context).textToSpeak() shouldBe null
+        }
+
+        withData(
+            nameFn = { it.second },
+            (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD) to "text password",
+            (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD) to "visible password",
+            (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD) to "web password",
+            (InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD) to "number password"
+        ) { (inputType, _) ->
+            every { inputConnection.getSelectedText(0) } returns "secret"
+            val editorInstance = EditorInstance(context)
+            editorInstance.handleStartInputView(EditorInfo().also { it.inputType = inputType })
+            editorInstance.textToSpeak() shouldBe null
         }
     }
 

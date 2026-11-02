@@ -11,6 +11,7 @@ import inc.flide.vim8.Vim8ImeService
 import inc.flide.vim8.ime.input.ImeUiMode
 import inc.flide.vim8.ime.input.KeyVariation
 import inc.flide.vim8.ime.nlp.BreakIteratorGroup
+import inc.flide.vim8.ime.speech.lastSentence
 import inc.flide.vim8.keyboardManager
 
 class EditorInstance(context: Context) {
@@ -19,11 +20,14 @@ class EditorInstance(context: Context) {
     private val breakIteratorGroup = BreakIteratorGroup(context)
     private fun currentInputConnection() = Vim8ImeService.currentInputConnection()
 
+    private var isPasswordField = false
+
     var imeOptions: ImeOptions = ImeOptions.wrap(0)
         private set
 
     fun handleStartInputView(editorInfo: EditorInfo) {
         imeOptions = ImeOptions.wrap(editorInfo.imeOptions)
+        isPasswordField = editorInfo.isPasswordInputType()
 
         activeState.imeUiMode = when (editorInfo.inputType and InputType.TYPE_MASK_CLASS) {
             InputType.TYPE_CLASS_NUMBER,
@@ -50,6 +54,19 @@ class EditorInstance(context: Context) {
                 ImeUiMode.TEXT
             }
         }
+    }
+
+    /**
+     * Text to read aloud: the selection if there is one, otherwise the last sentence before the
+     * cursor. Returns null for password fields and when there is nothing to read.
+     */
+    fun textToSpeak(): String? {
+        if (isPasswordField || activeState.keyVariation == KeyVariation.PASSWORD) return null
+        val ic = currentInputConnection() ?: return null
+        val selected = ic.getSelectedText(0)?.toString()
+        if (!selected.isNullOrBlank()) return selected.trim()
+        val before = ic.getTextBeforeCursor(SPEECH_CONTEXT_LENGTH, 0)?.toString() ?: return null
+        return lastSentence(before).takeIf { it.isNotEmpty() }
     }
 
     fun commitText(text: String): Boolean {
@@ -147,4 +164,19 @@ class EditorInstance(context: Context) {
                 flags
             )
         )
+}
+
+private const val SPEECH_CONTEXT_LENGTH = 500
+
+private fun EditorInfo.isPasswordInputType(): Boolean {
+    val variation = inputType and InputType.TYPE_MASK_VARIATION
+    return when (inputType and InputType.TYPE_MASK_CLASS) {
+        InputType.TYPE_CLASS_TEXT ->
+            variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+
+        InputType.TYPE_CLASS_NUMBER -> variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        else -> false
+    }
 }
