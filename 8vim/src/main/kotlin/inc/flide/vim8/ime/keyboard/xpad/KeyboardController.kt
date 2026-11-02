@@ -116,6 +116,9 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
     private var currentMovementSequenceType = MovementSequenceType.NO_MOVEMENT
     private var currentFingerPosition: FingerPosition = FingerPosition.NO_TOUCH
     private var currentKey: Key? = null
+
+    // Set when a long press was consumed by text-to-speech so releasing must not also type a key.
+    private var longPressConsumed = false
     private val movementSequence: MutableList<FingerPosition> = arrayListOf()
     private val trailColor: Color
         get() = (
@@ -194,6 +197,7 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                longPressConsumed = false
                 keyboard.trailColor = trailColor
                 resetKey()
                 movementSequence.clear()
@@ -214,6 +218,7 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
                 val isFingerPositionChanged = lastKnownFingerPosition !== currentFingerPosition
                 if (isFingerPositionChanged) {
                     interruptLongPress()
+                    longPressConsumed = false
                     movementSequence.add(currentFingerPosition)
                     keyboard.findLayer(movementSequence)
 
@@ -261,7 +266,8 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
                 keyboard.circle.reset()
                 currentFingerPosition = FingerPosition.NO_TOUCH
                 movementSequence.add(currentFingerPosition)
-                processKeyPress(movementSequence)
+                if (!longPressConsumed) processKeyPress(movementSequence)
+                longPressConsumed = false
 
                 movementSequence.clear()
                 currentMovementSequenceType = MovementSequenceType.NO_MOVEMENT
@@ -271,6 +277,10 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
             MotionEvent.ACTION_CANCEL -> {
                 job?.cancel()
                 job = null
+                if (longPressConsumed) {
+                    longPressConsumed = false
+                    inputEventDispatcher.sendDownUp(CustomKeycode.SPEAK_STOP.toKeyboardAction())
+                }
                 resetKey()
                 isReducesCircleSize = false
                 keyboard.circle.reset()
@@ -337,7 +347,14 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
 
     private fun processLongPressStart(movementSequence: MovementSequence) {
         processMovementSequence(movementSequence)
+            .filter {
+                it.keyEventCode != CustomKeycode.SPEAK_TEXT.keyCode ||
+                    prefs.speech.enabled.get()
+            }
             .onSome {
+                if (it.keyEventCode == CustomKeycode.SPEAK_TEXT.keyCode) {
+                    longPressConsumed = true
+                }
                 inputEventDispatcher.sendDownUp(it, true)
             }
     }

@@ -70,6 +70,7 @@ class Vim8ImeService : LifecycleInputMethodService() {
     private val editorInstance by editorInstance()
     private val layoutLoader by layoutLoader()
     private val suggestionsManager by suggestionsManager()
+    private val speechManager by speechManager()
 
     private var resourcesContext by mutableStateOf(this as Context)
     private var inputWindowView by mutableStateOf<View?>(null)
@@ -159,6 +160,12 @@ class Vim8ImeService : LifecycleInputMethodService() {
     override fun onFinishInput() {
         super.onFinishInput()
         suggestionsManager.clearSuggestions()
+        speechManager.shutdown()
+    }
+
+    override fun onWindowHidden() {
+        super.onWindowHidden()
+        speechManager.stop()
     }
 
     override fun onCreateCandidatesView(): View? {
@@ -167,6 +174,7 @@ class Vim8ImeService : LifecycleInputMethodService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        speechManager.shutdown()
         vim8ImeServiceReference = WeakReference(null)
         inputWindowView = null
     }
