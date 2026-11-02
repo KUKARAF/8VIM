@@ -119,7 +119,7 @@ class KeyboardManagerSpec : FunSpec(
                 }
 
                 CustomKeycode.DICTATE_START.keyCode -> verify {
-                    speechManager.start(any(), any())
+                    speechManager.start(any(), any(), any())
                 }
                 CustomKeycode.DICTATE_STOP.keyCode -> verify { speechManager.stop() }
                 CustomKeycode.NO_OPERATION.keyCode -> {}
@@ -184,6 +184,7 @@ class KeyboardManagerSpec : FunSpec(
                     }
                     every { speech } returns mockk {
                         every { enabled } answers { speechEnabled }
+                        every { live } returns mockk { every { get() } returns true }
                         every { model } returns mockk { every { get() } returns "english-39" }
                     }
                     every { textReplacement } returns mockk {
@@ -291,7 +292,7 @@ class KeyboardManagerSpec : FunSpec(
                 every { editor.canDictate() } returns true
                 val manager = KeyboardManager(context)
                 repeat(5) { manager.onInputKeyUp(speak, true) }
-                verify(exactly = 1) { speechManager.start(any(), any()) }
+                verify(exactly = 1) { speechManager.start(any(), any(), any()) }
                 verify(exactly = 1) { editor.canDictate() }
             }
 
@@ -301,14 +302,14 @@ class KeyboardManagerSpec : FunSpec(
                 manager.onInputKeyUp(speak, true)
                 manager.onInputKeyUp(stop, false)
                 manager.onInputKeyUp(speak, true)
-                verify(exactly = 2) { speechManager.start(any(), any()) }
+                verify(exactly = 2) { speechManager.start(any(), any(), any()) }
                 verify(exactly = 1) { speechManager.stop() }
             }
 
             test("dictation not allowed") {
                 every { editor.canDictate() } returns false
                 KeyboardManager(context).onInputKeyUp(speak, true)
-                verify(exactly = 0) { speechManager.start(any(), any()) }
+                verify(exactly = 0) { speechManager.start(any(), any(), any()) }
             }
 
             test("disabled in settings") {
@@ -316,7 +317,7 @@ class KeyboardManagerSpec : FunSpec(
                 every { editor.canDictate() } returns true
                 KeyboardManager(context).onInputKeyUp(speak, true)
                 verify(exactly = 0) { editor.canDictate() }
-                verify(exactly = 0) { speechManager.start(any(), any()) }
+                verify(exactly = 0) { speechManager.start(any(), any(), any()) }
             }
 
             test("dictate keycodes are not repeatable") {

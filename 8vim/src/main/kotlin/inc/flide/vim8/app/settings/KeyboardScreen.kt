@@ -104,6 +104,12 @@ fun KeyboardScreen() = Screen {
                 summaryOn = stringRes(R.string.settings__keyboard__speech__enabled__summary__on),
                 summaryOff = stringRes(R.string.settings__keyboard__speech__enabled__summary__off)
             )
+            SwitchPreference(
+                pref = prefs.speech.live,
+                title = stringRes(R.string.settings__keyboard__speech__live__title),
+                summaryOn = stringRes(R.string.settings__keyboard__speech__live__summary__on),
+                summaryOff = stringRes(R.string.settings__keyboard__speech__live__summary__off)
+            )
         }
 
         SpeechModelsGroup()

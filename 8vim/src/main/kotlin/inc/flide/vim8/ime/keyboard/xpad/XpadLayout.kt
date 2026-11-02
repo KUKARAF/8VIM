@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -93,6 +94,17 @@ fun XpadLayout() = with(LocalDensity.current) {
             event.recycle()
         } catch (e: Throwable) {
             // Ignore
+        }
+    }
+
+    val speechWorking = controller.isSpeechActive
+    LaunchedEffect(speechWorking) {
+        if (speechWorking) {
+            try {
+                while (true) withFrameNanos { controller.wave.onFrame(it) }
+            } finally {
+                controller.wave.stop()
+            }
         }
     }
 

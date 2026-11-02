@@ -256,6 +256,10 @@ class AppPrefs : PreferenceModel(9) {
             key = "prefs_speech_enabled",
             default = true
         )
+        val live = boolean(
+            key = "prefs_speech_live",
+            default = true
+        )
         val model = string(
             key = "prefs_speech_model",
             default = "english-39"

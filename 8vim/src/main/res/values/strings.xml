@@ -164,6 +164,9 @@
     <string name="settings__keyboard__speech__enabled__title">Dictate on centre hold</string>
     <string name="settings__keyboard__speech__enabled__summary__on">Hold the centre button and speak; release to finish</string>
     <string name="settings__keyboard__speech__enabled__summary__off">Holding the centre button does nothing</string>
+    <string name="settings__keyboard__speech__live__title">Live dictation</string>
+    <string name="settings__keyboard__speech__live__summary__on">Text appears after each pause while you keep holding</string>
+    <string name="settings__keyboard__speech__live__summary__off">All text appears when you release</string>
     <string name="speech__model_invalid">The speech model could not be loaded; try re-downloading it</string>
     <string name="speech__model_missing">Download a speech model in Keyboard settings first</string>
     <string name="settings__keyboard__speech__model__group__title">Speech models</string>

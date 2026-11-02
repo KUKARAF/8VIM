@@ -143,7 +143,8 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         if (!prefs.speech.enabled.get() || !editorInstance.canDictate()) return
         speechManager.start(
             modelId = prefs.speech.model.get(),
-            final = { text -> if (text.isNotEmpty()) editorInstance.commitText("$text ") }
+            live = prefs.speech.live.get(),
+            onText = { text -> if (text.isNotEmpty()) editorInstance.commitText("$text ") }
         )
     }
 

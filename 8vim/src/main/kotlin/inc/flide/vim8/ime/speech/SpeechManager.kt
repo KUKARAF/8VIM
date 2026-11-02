@@ -18,14 +18,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
  * Offline speech-to-text with a downloaded Whisper model. While the dictation key is held the
- * microphone is recorded (16 kHz mono); on release the audio is transcribed on-device and
- * delivered to the caller. [level] exposes the live microphone loudness (0..1) for the UI.
+ * microphone is recorded (16 kHz mono) and transcribed on-device, either phrase by phrase at
+ * pauses (live) or in one go on release. [level] exposes the live microphone loudness (0..1) for the UI.
  */
 class SpeechManager(context: Context) {
     private val appContext = context.applicationContext
@@ -53,10 +54,12 @@ class SpeechManager(context: Context) {
     private var stopRequested = false
 
     /**
-     * Starts recording. [final] receives the transcript (empty when nothing was recognised).
-     * Returns false when dictation cannot start (missing permission or model, or busy).
+     * Starts recording. With [live] the audio is cut at pauses and every finished phrase is
+     * transcribed and delivered to [onText] while the key is still held; otherwise the whole
+     * recording is delivered once, after [stop]. Returns false when dictation cannot start
+     * (missing permission or model, or busy).
      */
-    fun start(modelId: String, final: (String) -> Unit): Boolean {
+    fun start(modelId: String, live: Boolean, onText: (String) -> Unit): Boolean {
         if (isListening || isTranscribing) return false
         if (!MicPermissionActivity.hasPermission(appContext)) {
             MicPermissionActivity.request(appContext)
@@ -69,7 +72,7 @@ class SpeechManager(context: Context) {
         }
         stopRequested = false
         isListening = true
-        job = scope.launch { run(modelId, final) }
+        job = scope.launch { run(modelId, live, onText) }
         return true
     }
 
@@ -90,26 +93,32 @@ class SpeechManager(context: Context) {
         if (old != null) scope.launch { old.close() }
     }
 
-    private suspend fun run(modelId: String, final: (String) -> Unit) {
-        var text = ""
-        try {
-            val samples = withContext(Dispatchers.IO) { record() }
-            isListening = false
-            level = 0f
-            if (samples.size >= MIN_SAMPLES) {
-                isTranscribing = true
-                text = transcribe(modelId, samples)
+    private suspend fun run(modelId: String, live: Boolean, onText: (String) -> Unit) {
+        val segments = Channel<FloatArray>(Channel.UNLIMITED)
+        val consumer = scope.launch {
+            try {
+                for (segment in segments) {
+                    isTranscribing = true
+                    val text = transcribe(modelId, segment)
+                    if (text.isNotEmpty()) onText(text)
+                }
+            } catch (e: InvalidModelException) {
+                stopRequested = true
+                toast(R.string.speech__model_invalid)
+            } finally {
+                isTranscribing = false
             }
+        }
+        try {
+            withContext(Dispatchers.IO) { record(live, segments) }
         } catch (e: IOException) {
-            text = ""
-        } catch (e: InvalidModelException) {
-            toast(R.string.speech__model_invalid)
+            // Nothing more to deliver; fall through and finish what was already queued.
         } finally {
             isListening = false
-            isTranscribing = false
             level = 0f
+            segments.close()
         }
-        final(text)
+        consumer.join()
     }
 
     private suspend fun transcribe(modelId: String, samples: FloatArray): String {
@@ -126,7 +135,7 @@ class SpeechManager(context: Context) {
     }
 
     @SuppressLint("MissingPermission")
-    private suspend fun record(): FloatArray {
+    private suspend fun record(live: Boolean, segments: Channel<FloatArray>) {
         val minBuffer = AudioRecord.getMinBufferSize(
             SAMPLE_RATE,
             AudioFormat.CHANNEL_IN_MONO,
@@ -144,27 +153,67 @@ class SpeechManager(context: Context) {
             recorder.release()
             throw IOException("microphone unavailable")
         }
-        val out = FloatArray(MAX_SAMPLES)
+        val maxSegment = if (live) MAX_LIVE_SEGMENT_SAMPLES else MAX_SAMPLES
+        val segment = FloatArray(maxSegment)
         var count = 0
+        var speechSamples = 0
+        var silenceRun = 0
+        var noise = INITIAL_NOISE
         val chunk = ShortArray(SAMPLE_RATE / CHUNKS_PER_SECOND)
         try {
             recorder.startRecording()
-            while (scopeActive() && !stopRequested && count < MAX_SAMPLES) {
+            while (scopeActive() && !stopRequested) {
                 val read = recorder.read(chunk, 0, chunk.size)
                 if (read < 0) throw IOException("read failed")
+                if (read == 0) continue
+                if (count + read > maxSegment) {
+                    if (!live) break
+                    segments.trySend(segment.copyOf(count))
+                    count = 0
+                    speechSamples = 0
+                    silenceRun = 0
+                }
                 var sum = 0.0
                 for (i in 0 until read) {
                     val v = chunk[i] / PCM_MAX
-                    if (count < MAX_SAMPLES) out[count++] = v
+                    segment[count + i] = v
                     sum += v * v
                 }
-                if (read > 0) publishLevel(sqrt(sum / read).toFloat())
+                count += read
+                val rms = sqrt(sum / read).toFloat()
+                publishLevel(rms)
+                if (!live) continue
+                val threshold = maxOf(MIN_SPEECH_RMS, noise * SPEECH_OVER_NOISE)
+                if (rms > threshold) {
+                    speechSamples += read
+                    silenceRun = 0
+                } else {
+                    silenceRun += read
+                    noise = noise * NOISE_DECAY + rms * (1 - NOISE_DECAY)
+                }
+                if (speechSamples == 0) {
+                    // Still waiting for speech: keep only a short lead-in.
+                    if (count > PREROLL_SAMPLES) {
+                        segment.copyInto(segment, 0, count - PREROLL_SAMPLES, count)
+                        count = PREROLL_SAMPLES
+                    }
+                } else if (silenceRun >= PAUSE_SAMPLES) {
+                    if (speechSamples >= MIN_SPEECH_SAMPLES) {
+                        segments.trySend(segment.copyOf(count - (silenceRun - TAIL_SAMPLES)))
+                    }
+                    val keep = minOf(PREROLL_SAMPLES, count)
+                    segment.copyInto(segment, 0, count - keep, count)
+                    count = keep
+                    speechSamples = 0
+                    silenceRun = 0
+                }
             }
         } finally {
             recorder.stop()
             recorder.release()
         }
-        return out.copyOf(count)
+        val worthSending = if (live) speechSamples >= MIN_SPEECH_SAMPLES else count >= MIN_SAMPLES
+        if (worthSending) segments.trySend(segment.copyOf(count))
     }
 
     private fun scopeActive() = job?.isActive != false
@@ -187,6 +236,15 @@ class SpeechManager(context: Context) {
         const val PCM_MAX = 32768f
         const val MAX_SAMPLES = SAMPLE_RATE * 30
         const val MIN_SAMPLES = SAMPLE_RATE / 2
+        const val MAX_LIVE_SEGMENT_SAMPLES = SAMPLE_RATE * 25
+        const val PAUSE_SAMPLES = SAMPLE_RATE * 7 / 10
+        const val TAIL_SAMPLES = SAMPLE_RATE / 4
+        const val PREROLL_SAMPLES = SAMPLE_RATE * 3 / 10
+        const val MIN_SPEECH_SAMPLES = SAMPLE_RATE / 5
+        const val MIN_SPEECH_RMS = 0.012f
+        const val SPEECH_OVER_NOISE = 2.5f
+        const val INITIAL_NOISE = 0.004f
+        const val NOISE_DECAY = 0.95f
         const val LEVEL_GAIN = 3.5f
         const val LEVEL_DECAY = 0.7f
     }

@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -156,6 +157,17 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
         }
     }
 
+    /** Animated wave shown around the circle while speech-to-text is listening or transcribing. */
+    val wave = WaveRing()
+
+    /** True only while a recording is being transcribed (drives the wave). */
+    val isSpeechWorking: Boolean
+        get() = speechManager.isTranscribing
+
+    /** True while listening (loudness ring) or transcribing (wave); drives the frame loop. */
+    val isSpeechActive: Boolean
+        get() = speechManager.isListening || speechManager.isTranscribing
+
     fun drawSectors(drawScope: DrawScope, hasVirtualCentre: Boolean, color: Color) {
         drawScope.drawCircle(
             color,
@@ -166,7 +178,17 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
 
         drawScope.drawPath(keyboard.path, color, style = drawStyle)
 
-        if (speechManager.isListening) drawLoudnessRing(drawScope, color)
+        if (isSpeechActive) {
+            wave.draw(
+                drawScope,
+                keyboard.circle.centre,
+                keyboard.circle.radius,
+                level = speechManager.level,
+                listening = speechManager.isListening,
+                transcribing = speechManager.isTranscribing,
+                additive = backgroundColor.luminance() < 0.5f
+            )
+        }
 
         if (hasVirtualCentre) {
             drawScope.drawCircle(
@@ -176,17 +198,6 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
                 style = Fill
             )
         }
-    }
-
-    /** A ring around the circle that grows and thickens with the microphone loudness. */
-    private fun drawLoudnessRing(drawScope: DrawScope, color: Color) {
-        val level = speechManager.level
-        drawScope.drawCircle(
-            color.copy(alpha = RING_MIN_ALPHA + RING_ALPHA_RANGE * level),
-            keyboard.circle.radius * (1f + RING_GROWTH * level) + RING_GAP,
-            keyboard.circle.centre,
-            style = Stroke(width = RING_MIN_WIDTH + RING_WIDTH_RANGE * level)
-        )
     }
 
     fun drawTrail(drawScope: DrawScope, trailPoints: List<GlideGesture.Point>) {
@@ -433,9 +444,3 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
     }
 }
 
-private const val RING_MIN_ALPHA = 0.5f
-private const val RING_ALPHA_RANGE = 0.5f
-private const val RING_GROWTH = 0.8f
-private const val RING_GAP = 16f
-private const val RING_MIN_WIDTH = 12f
-private const val RING_WIDTH_RANGE = 90f
