@@ -374,8 +374,13 @@ class KeyboardController(context: Context) : GlideGesture.Listener {
     private fun processLongPressStart(movementSequence: MovementSequence) {
         processMovementSequence(movementSequence)
             .filter {
+                // Dictation is for a fresh hold on the centre. Holding on after a letter was
+                // swiped in the same touch (e.g. pausing mid-word) must not start it.
                 it.keyEventCode != CustomKeycode.DICTATE_START.keyCode ||
-                    prefs.speech.enabled.get()
+                    (
+                        prefs.speech.enabled.get() &&
+                            currentMovementSequenceType != MovementSequenceType.CONTINUED_MOVEMENT
+                        )
             }
             .onSome {
                 if (it.keyEventCode == CustomKeycode.DICTATE_START.keyCode) {

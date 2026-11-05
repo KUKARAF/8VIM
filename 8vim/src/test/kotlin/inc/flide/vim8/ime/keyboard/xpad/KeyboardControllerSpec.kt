@@ -358,6 +358,33 @@ class KeyboardControllerSpec : FunSpec({
                 verify(exactly = 0) { eventDispatcher.sendDownUp(space, false) }
             }
 
+            test("holding centre after swiping a letter does not dictate") {
+                stubCentre()
+                val swipe = listOf(
+                    FingerPosition.INSIDE_CIRCLE,
+                    FingerPosition.BOTTOM,
+                    FingerPosition.INSIDE_CIRCLE
+                )
+                val letter = "a".toKeyboardAction()
+                every { xpadKeyboard.hasAction(swipe) } returns true
+                every { xpadKeyboard.action(swipe, any()) } returns letter.some()
+                every { xpadKeyboard.key(swipe) } returns mockk<Key>(relaxed = true)
+                every { event.actionMasked } answers { MotionEvent.ACTION_DOWN } andThenAnswer {
+                    MotionEvent.ACTION_MOVE
+                }
+                every { event.y } returnsMany listOf(
+                    FingerPosition.INSIDE_CIRCLE,
+                    FingerPosition.BOTTOM,
+                    FingerPosition.INSIDE_CIRCLE,
+                    FingerPosition.INSIDE_CIRCLE
+                ).map { it.ordinal.toFloat() }
+                val controller = KeyboardController(context).also { it.keyboard = xpadKeyboard }
+                repeat(4) { controller.onTouchEventInternal(event) }
+                delay(700)
+                verify(exactly = 1) { eventDispatcher.sendDownUp(letter, false) }
+                verify(exactly = 0) { eventDispatcher.sendDownUp(speak, true) }
+            }
+
             test("short tap on centre still types") {
                 stubCentre()
                 every { event.actionMasked } answers { MotionEvent.ACTION_DOWN } andThenAnswer {
