@@ -155,6 +155,10 @@
     <string name="settings__text_replacement__error_blank_abbreviation">Abbreviation must not be blank</string>
     <string name="settings__text_replacement__trigger_hint">Replacement fires when you type a space, period, comma, !, or ? after the abbreviation.</string>
 
+    <string name="settings__keyboard__autofill__group__title">Autofill</string>
+    <string name="settings__keyboard__autofill__inline__title">Password manager suggestions</string>
+    <string name="settings__keyboard__autofill__inline__summary__on">Entries from your autofill service (Android 11+) appear above the keyboard</string>
+    <string name="settings__keyboard__autofill__inline__summary__off">Autofill uses the normal pop-up menu</string>
     <string name="settings__keyboard__word_prediction__group__title">Word Prediction</string>
     <string name="settings__keyboard__word_prediction__enabled__title">Enable word prediction</string>
     <string name="settings__keyboard__word_prediction__enabled__summary__on">Word suggestions will appear above the keyboard</string>

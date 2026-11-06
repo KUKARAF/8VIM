@@ -2,10 +2,15 @@ package inc.flide.vim8
 
 import android.content.Context
 import android.content.res.Configuration
+import android.os.Build
+import android.os.Bundle
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InlineSuggestionsRequest
+import android.view.inputmethod.InlineSuggestionsResponse
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,8 +23,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.AbstractComposeView
 import inc.flide.vim8.datastore.model.observeAsState
+import inc.flide.vim8.ime.autofill.InlineAutofill
+import inc.flide.vim8.ime.autofill.InlineAutofillBar
 import inc.flide.vim8.ime.input.ImeUiMode
 import inc.flide.vim8.ime.input.InputFeedbackController
 import inc.flide.vim8.ime.input.LocalInputFeedbackController
@@ -78,6 +86,7 @@ class Vim8ImeService : LifecycleInputMethodService() {
     private val activeState get() = keyboardManager.activeState
     private val inputFeedbackController by lazy { InputFeedbackController.new(this) }
     var keyboardData: KeyboardData? by mutableStateOf(null)
+    private var inlineSuggestionViews by mutableStateOf<List<View>>(emptyList())
 
     init {
         setTheme(R.style.AppTheme_Keyboard)
@@ -157,8 +166,28 @@ class Vim8ImeService : LifecycleInputMethodService() {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.R)
+    override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
+        if (!prefs.autofill.inline.get()) return null
+        val scheme = themeManager.currentTheme.value?.scheme ?: return null
+        return InlineAutofill.buildRequest(
+            context = this,
+            chipColor = scheme.secondaryContainer.toArgb(),
+            textColor = scheme.onSecondaryContainer.toArgb(),
+            subtitleColor = scheme.onSurfaceVariant.toArgb()
+        )
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
+        if (!prefs.autofill.inline.get()) return false
+        InlineAutofill.inflate(this, response) { inlineSuggestionViews = it }
+        return response.inlineSuggestions.isNotEmpty()
+    }
+
     override fun onFinishInput() {
         super.onFinishInput()
+        inlineSuggestionViews = emptyList()
         suggestionsManager.clearSuggestions()
         speechManager.shutdown()
     }
@@ -207,7 +236,11 @@ class Vim8ImeService : LifecycleInputMethodService() {
         val state by keyboardManager.activeState.collectAsState()
         val wordPredictionEnabled by prefs.wordPrediction.enabled.observeAsState()
 
-        if (wordPredictionEnabled && state.imeUiMode == ImeUiMode.TEXT) {
+        // Password manager chips only exist while the autofill service offers
+        // something (login fields); otherwise the word suggestions stay as they were.
+        if (inlineSuggestionViews.isNotEmpty() && state.imeUiMode == ImeUiMode.TEXT) {
+            InlineAutofillBar(inlineSuggestionViews)
+        } else if (wordPredictionEnabled && state.imeUiMode == ImeUiMode.TEXT) {
             SuggestionsBar()
         }
 

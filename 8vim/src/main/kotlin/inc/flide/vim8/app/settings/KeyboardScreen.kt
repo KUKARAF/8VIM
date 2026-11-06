@@ -96,6 +96,17 @@ fun KeyboardScreen() = Screen {
         }
 
         PreferenceGroup(
+            title = stringRes(R.string.settings__keyboard__autofill__group__title)
+        ) {
+            SwitchPreference(
+                pref = prefs.autofill.inline,
+                title = stringRes(R.string.settings__keyboard__autofill__inline__title),
+                summaryOn = stringRes(R.string.settings__keyboard__autofill__inline__summary__on),
+                summaryOff = stringRes(R.string.settings__keyboard__autofill__inline__summary__off)
+            )
+        }
+
+        PreferenceGroup(
             title = stringRes(R.string.settings__keyboard__speech__group__title)
         ) {
             SwitchPreference(

@@ -32,6 +32,7 @@ class AppPrefs : PreferenceModel(9) {
     val wordPrediction = WordPrediction()
     val textReplacement = TextReplacement()
     val speech = Speech()
+    val autofill = Autofill()
     val internal = Internal()
 
     inner class Clipboard {
@@ -248,6 +249,13 @@ class AppPrefs : PreferenceModel(9) {
         val enabled = boolean(
             key = "prefs_word_prediction_enabled",
             default = false
+        )
+    }
+
+    inner class Autofill {
+        val inline = boolean(
+            key = "prefs_autofill_inline",
+            default = true
         )
     }
 
